@@ -1,0 +1,37 @@
+/* Base tokens + layout; component styles live in App.css */
+:root {
+  --golf-green: #0b4020;
+  --golf-green-hover: #0e4c26;
+  --golf-green-soft: #e6f8ec;
+  --golf-bg: #f0f5f1;
+  --golf-surface: #ffffff;
+  --golf-text: #123322;
+  --golf-text-muted: #4a6354;
+  --golf-border: #c2d5c8;
+  --golf-shadow: 0 6px 20px rgba(11, 64, 32, 0.08);
+  --golf-radius: 12px;
+  --golf-radius-sm: 8px;
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--golf-text);
+  background: var(--golf-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+#root {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+}
