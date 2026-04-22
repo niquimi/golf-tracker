@@ -4,6 +4,7 @@ import {
   uploadRound,
   confirmRound,
   getCourseNames,
+  getOverviewStats,
 } from '../services/api';
 
 /** In = hoyos 1–9, Out = hoyos 10–18 (misma convención que Gemini/backend). */
@@ -48,6 +49,20 @@ function formatOutDisplay(outTotal, holes) {
   return outTotal ?? '';
 }
 
+function createEmptyDraftPlayerRow(holes) {
+  const strokesPerHole = Array.from({ length: holes }, () => 0);
+  const { inTotal, outTotal } = computeNineTotals(strokesPerHole);
+  return {
+    name: '',
+    playerId: '',
+    strokesPerHole,
+    totalStrokes: 0,
+    inTotal,
+    outTotal,
+    strokesOverPar: null,
+  };
+}
+
 function Upload() {
   const [password, setPassword] = useState('');
   const [token, setToken] = useState('');
@@ -61,7 +76,9 @@ function Upload() {
   /** Nombres leídos en la tarjeta que no coinciden con jugadores dados de alta */
   const [skippedNames, setSkippedNames] = useState([]);
   const [courseNames, setCourseNames] = useState([]);
+  const [playersCatalog, setPlayersCatalog] = useState([]);
   const [loadingStep, setLoadingStep] = useState('idle');
+  const [entryMode, setEntryMode] = useState('photo'); // 'photo' | 'manual'
 
   const busy = loadingStep !== 'idle';
 
@@ -82,6 +99,30 @@ function Upload() {
       cancelled = true;
     };
   }, [token]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const overview = await getOverviewStats();
+        if (!active) return;
+        const list = overview?.playersAverage || [];
+        const mapped = list
+          .map((p) => ({
+            playerId: String(p?._id || ''),
+            playerName: String(p?.playerName || '').trim(),
+          }))
+          .filter((p) => p.playerId && p.playerName);
+        mapped.sort((a, b) => a.playerName.localeCompare(b.playerName, 'es', { sensitivity: 'base' }));
+        setPlayersCatalog(mapped);
+      } catch {
+        if (active) setPlayersCatalog([]);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const uniqueCourseNames = useMemo(() => {
     const seen = new Map();
@@ -141,6 +182,7 @@ function Upload() {
         players: normalizeDraftPlayers(d.players || [], d.holes || 18),
       });
       setGeminiRaw(res.gemini?.rawText || '');
+      setEntryMode('photo');
       const n = (d.players || []).length;
       if (n === 0) {
         setStatus(
@@ -155,6 +197,30 @@ function Upload() {
     } finally {
       setLoadingStep('idle');
     }
+  };
+
+  const handleCreateManualDraft = () => {
+    if (!token) {
+      setError('Primero introduce la contraseña correcta.');
+      return;
+    }
+    if (!courseName) {
+      setError('Introduce el nombre del campo.');
+      return;
+    }
+    setError('');
+    setSkippedNames([]);
+    setGeminiRaw('');
+    const holes = 18;
+    setDraft({
+      courseName,
+      date: date || '',
+      imagePath: null,
+      holes,
+      players: [createEmptyDraftPlayerRow(holes)],
+    });
+    setStatus('Borrador manual creado. Selecciona jugador(es) y rellena los golpes.');
+    setEntryMode('manual');
   };
 
   const handleChangeStroke = (playerIndex, holeIndex, value) => {
@@ -177,6 +243,41 @@ function Upload() {
       players[playerIndex] = player;
       updated.players = players;
       return updated;
+    });
+  };
+
+  const handleChangePlayer = (playerIndex, selectedPlayerId) => {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev };
+      const players = [...(updated.players || [])];
+      const player = { ...players[playerIndex] };
+      const found = playersCatalog.find((p) => p.playerId === selectedPlayerId) || null;
+      player.playerId = found?.playerId || '';
+      player.name = found?.playerName || '';
+      players[playerIndex] = player;
+      updated.players = players;
+      return updated;
+    });
+  };
+
+  const handleAddPlayerRow = () => {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      const holes = prev.holes || 18;
+      return {
+        ...prev,
+        players: [...(prev.players || []), createEmptyDraftPlayerRow(holes)],
+      };
+    });
+  };
+
+  const handleRemovePlayerRow = (playerIndex) => {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      const nextPlayers = [...(prev.players || [])];
+      nextPlayers.splice(playerIndex, 1);
+      return { ...prev, players: nextPlayers };
     });
   };
 
@@ -204,7 +305,9 @@ function Upload() {
   };
 
   const confirming = loadingStep === 'confirm';
-  const hasDraftPlayers = Boolean(draft?.players?.length);
+  const validPlayersCount = (draft?.players || []).filter((p) => (p?.name || '').trim()).length;
+  const hasDraftPlayers = validPlayersCount > 0;
+  const hasDraftRows = Boolean(draft?.players?.length);
 
   return (
     <div className="page page--upload">
@@ -250,8 +353,27 @@ function Upload() {
 
           <section className="upload-section">
             <p className="section-title">Nueva ronda</p>
+            <div className="field-row">
+              <label>
+                Modo
+                <select
+                  value={entryMode}
+                  onChange={(e) => setEntryMode(e.target.value)}
+                  disabled={busy}
+                >
+                  <option value="photo">Desde foto (Gemini)</option>
+                  <option value="manual">Manual</option>
+                </select>
+              </label>
+            </div>
             <form
-              onSubmit={handleUploadRound}
+              onSubmit={(e) => {
+                if (entryMode !== 'photo') {
+                  e.preventDefault();
+                  return;
+                }
+                handleUploadRound(e);
+              }}
               aria-busy={loadingStep === 'upload'}
             >
               <label>
@@ -289,20 +411,26 @@ function Upload() {
                   type="file"
                   accept="image/*"
                   onChange={(e) => setImageFile(e.target.files?.[0] || null)}
-                  disabled={loadingStep === 'upload'}
+                  disabled={loadingStep === 'upload' || entryMode !== 'photo'}
                 />
               </label>
 
-              <button type="submit" disabled={busy}>
-                {loadingStep === 'upload' ? (
-                  <>
-                    <span className="spinner spinner--on-primary" aria-hidden />
-                    Subiendo…
-                  </>
-                ) : (
-                  'Subir ronda'
-                )}
-              </button>
+              {entryMode === 'photo' ? (
+                <button type="submit" disabled={busy}>
+                  {loadingStep === 'upload' ? (
+                    <>
+                      <span className="spinner spinner--on-primary" aria-hidden />
+                      Subiendo…
+                    </>
+                  ) : (
+                    'Subir ronda'
+                  )}
+                </button>
+              ) : (
+                <button type="button" disabled={busy} onClick={handleCreateManualDraft}>
+                  Crear borrador manual
+                </button>
+              )}
             </form>
           </section>
         </>
@@ -326,13 +454,13 @@ function Upload() {
               corrige el nombre en la tarjeta y vuelve a subirla.
             </p>
           )}
-          {!hasDraftPlayers && (
+          {!hasDraftPlayers && entryMode === 'photo' && (
             <p className="alert alert-info" role="status">
               No hay jugadores reconocidos en esta tarjeta. Comprueba que los nombres coincidan con
               los usuarios registrados.
             </p>
           )}
-          {hasDraftPlayers && (
+          {hasDraftRows && (
           <div className="table-scroll">
             <table className="data-table">
               <thead>
@@ -345,12 +473,30 @@ function Upload() {
                   <th>Out</th>
                   <th>±Par</th>
                   <th>Total</th>
+                  <th aria-label="Acciones" />
                 </tr>
               </thead>
               <tbody>
                 {draft.players.map((p, pIndex) => (
-                  <tr key={p.playerId || p.name}>
-                    <td>{p.name}</td>
+                  <tr key={`row-${pIndex}-${p.playerId || p.name || 'new'}`}>
+                    <td>
+                      {entryMode === 'manual' ? (
+                        <select
+                          value={p.playerId || ''}
+                          onChange={(e) => handleChangePlayer(pIndex, e.target.value)}
+                          disabled={confirming}
+                        >
+                          <option value="">Selecciona…</option>
+                          {playersCatalog.map((opt) => (
+                            <option key={opt.playerId} value={opt.playerId}>
+                              {opt.playerName}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        p.name
+                      )}
+                    </td>
                     {p.strokesPerHole.map((v, hIndex) => (
                       <td key={hIndex}>
                         <input
@@ -368,11 +514,34 @@ function Upload() {
                     <td>{formatOutDisplay(p.outTotal, draft.holes)}</td>
                     <td>{p.strokesOverPar ?? ''}</td>
                     <td>{p.totalStrokes}</td>
+                    <td>
+                      {entryMode === 'manual' && (
+                        <button
+                          type="button"
+                          className="link-button"
+                          onClick={() => handleRemovePlayerRow(pIndex)}
+                          disabled={confirming || draft.players.length <= 1}
+                        >
+                          Quitar
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          )}
+
+          {draft && entryMode === 'manual' && (
+            <div className="field-row">
+              <button type="button" onClick={handleAddPlayerRow} disabled={confirming}>
+                Añadir fila
+              </button>
+              {validPlayersCount === 0 && (
+                <span className="inline-hint">Selecciona al menos un jugador para poder guardar.</span>
+              )}
+            </div>
           )}
 
           {geminiRaw && (
