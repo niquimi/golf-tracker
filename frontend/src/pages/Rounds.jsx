@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { getCoursesStats, getOverviewStats, getRounds } from '../services/api';
+import { getCoursesStats, getPlayers, getRounds } from '../services/api';
 
 const WEEKDAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
@@ -93,12 +93,11 @@ function Rounds() {
 
   useEffect(() => {
     let active = true;
-    Promise.all([getOverviewStats(), getCoursesStats()])
-      .then(([overview, coursesStats]) => {
+    Promise.all([getPlayers(), getCoursesStats()])
+      .then(([playersList, coursesStats]) => {
         if (!active) return;
-        const list = overview.playersAverage || [];
         setPlayers(
-          [...list].sort((a, b) =>
+          [...playersList].sort((a, b) =>
             (a.playerName || '').localeCompare(b.playerName || '', 'es', { sensitivity: 'base' })
           )
         );

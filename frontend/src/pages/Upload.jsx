@@ -4,7 +4,7 @@ import {
   uploadRound,
   confirmRound,
   getCourseNames,
-  getOverviewStats,
+  getPlayers,
 } from '../services/api';
 
 /** In = hoyos 1–9, Out = hoyos 10–18 (misma convención que Gemini/backend). */
@@ -104,9 +104,8 @@ function Upload() {
     let active = true;
     (async () => {
       try {
-        const overview = await getOverviewStats();
+        const list = await getPlayers();
         if (!active) return;
-        const list = overview?.playersAverage || [];
         const mapped = list
           .map((p) => ({
             playerId: String(p?._id || ''),

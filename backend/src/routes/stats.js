@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const { getOverviewStats, getPlayerStats, getCoursesStats } = require('../services/statsService');
 const Course = require('../models/Course');
+const Player = require('../models/Player');
 
 const router = express.Router();
 
@@ -11,6 +12,25 @@ router.get('/overview', async (req, res) => {
     return res.json(data);
   } catch (err) {
     console.error('Error getting overview stats', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/players', async (req, res) => {
+  try {
+    const players = await Player.find()
+      .select('name')
+      .sort({ name: 1 })
+      .lean();
+
+    const payload = players.map((player) => ({
+      _id: player._id,
+      playerName: player.name,
+    }));
+
+    return res.json(payload);
+  } catch (err) {
+    console.error('Error listing players', err);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getPlayerStats, getOverviewStats } from '../services/api';
+import { getPlayerStats, getPlayers } from '../services/api';
 
 function fmtDate(iso) {
   if (!iso) return '—';
@@ -41,9 +41,8 @@ function PlayerStats() {
     let active = true;
     (async () => {
       try {
-        const overview = await getOverviewStats();
+        const list = await getPlayers();
         if (!active) return;
-        const list = overview.playersAverage || [];
         const sorted = [...list].sort((a, b) =>
           (a.playerName || '').localeCompare(b.playerName || '', 'es', { sensitivity: 'base' })
         );

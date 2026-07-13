@@ -74,6 +74,12 @@ export async function getOverviewStats() {
   return res.json();
 }
 
+export async function getPlayers() {
+  const res = await fetch(`${API_BASE_URL}/stats/players`);
+  if (!res.ok) throw new Error('Error obteniendo jugadores');
+  return res.json();
+}
+
 export async function getPlayerStats(playerId) {
   const res = await fetch(`${API_BASE_URL}/stats/player/${playerId}`);
   if (!res.ok) throw new Error('Error obteniendo estadísticas de jugador');
